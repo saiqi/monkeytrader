@@ -1,6 +1,10 @@
 import std.stdio;
 
+import quandl;
+
 void main()
 {
-	writeln("Edit source/app.d to start your project.");
+	auto rawPrices = getDataset("CME", "PAQ2017");
+	auto prices = getPrice(Datatype.HIGH, rawPrices);
+	writeln(prices);
 }

@@ -19,7 +19,11 @@ pure ElementType!R1 computeFilter(R1, R2, R3, F)
   else {
     auto result = dotProduct(input[currentIndex - zeros[currentIndex].length + 1 .. currentIndex + 1], zeros[currentIndex]);
     
-    if(poles.length > 0)
+    if(poles[currentIndex] is null)
+    {
+      result += 0.;
+    }
+    else
     {
       result += dotProduct(iota(poles[currentIndex].length)
                            .map!((i) => computeFilter(input, zeros, poles, currentIndex - i - 1, neededOffset, initialValue)),
