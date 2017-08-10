@@ -1,7 +1,6 @@
 module indicators;
 
 import std.numeric: dotProduct;
-import std.range.primitives;
 import std.range: iota;
 import std.algorithm: map;
 
@@ -39,7 +38,6 @@ unittest
   import std.algorithm: equal, sum;
   import std.math: approxEqual;
   import std.stdio;
-  import std.functional: toDelegate;
   
   double[] values = [0., 1., 2., 3.];
   auto timestamps = iota(values.length);
