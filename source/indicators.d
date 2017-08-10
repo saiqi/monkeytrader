@@ -5,8 +5,8 @@ import std.range.primitives;
 import std.range: iota;
 import std.algorithm: map;
 
-pure ElementType!R1 computeFilter(R1, R2, R3, F)
-  (R1 input, R2 zeros, R3 poles, size_t currentIndex, size_t neededOffset, F initialValue)
+double computeFilter(R)
+  (R input, double[] function(size_t) zeros, double[] function(size_t) poles, size_t currentIndex, size_t neededOffset, double initialValue)
 {
   if(currentIndex < neededOffset - 1)
   {
@@ -17,17 +17,17 @@ pure ElementType!R1 computeFilter(R1, R2, R3, F)
     return initialValue;
   }
   else {
-    auto result = dotProduct(input[currentIndex - zeros[currentIndex].length + 1 .. currentIndex + 1], zeros[currentIndex]);
+    auto result = dotProduct(input[currentIndex - zeros(currentIndex).length + 1 .. currentIndex + 1], zeros(currentIndex));
     
-    if(poles[currentIndex] is null)
+    if(poles(currentIndex) is null)
     {
       result += 0.;
     }
     else
     {
-      result += dotProduct(iota(poles[currentIndex].length)
+      result += dotProduct(iota(poles(currentIndex).length)
                            .map!((i) => computeFilter(input, zeros, poles, currentIndex - i - 1, neededOffset, initialValue)),
-                           poles[currentIndex]);
+                           poles(currentIndex));
     }
     
     return result;
@@ -39,13 +39,14 @@ unittest
   import std.algorithm: equal, sum;
   import std.math: approxEqual;
   import std.stdio;
+  import std.functional: toDelegate;
   
   double[] values = [0., 1., 2., 3.];
   auto timestamps = iota(values.length);
   
   // EMA
-  auto emaZeros = timestamps.map!((a) => [.05]);
-  auto emaPoles = timestamps.map!((a) => [.95]);
+  auto emaZeros = (size_t x) => [.05];
+  auto emaPoles = (size_t x) => [.95];
   auto emaResults = timestamps.map!((a) => computeFilter(values, emaZeros, emaPoles, a, 1, values[0]));
   
   foreach(i; timestamps)
@@ -61,8 +62,8 @@ unittest
   }
   
   // SMA
-  auto smaZeros = timestamps.map!((a) => [1./3., 1./3., 1./3.]);
-  auto smaPoles = timestamps.map!((a) => [0]);
+  auto smaZeros = (size_t x) => [1./3., 1./3., 1./3.];
+  auto smaPoles = (size_t x) => [0.];
   auto smaResults = timestamps.map!((a) => computeFilter(values, smaZeros, smaPoles, a, 2, 0.));
   
   foreach(i; timestamps)
