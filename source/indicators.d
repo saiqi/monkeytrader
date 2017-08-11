@@ -2,7 +2,7 @@ module indicators;
 
 import std.numeric: dotProduct;
 import std.range: iota;
-import std.algorithm: map;
+import std.algorithm: map, sum;
 
 double computeFilter(R)
   (R input, double[] function(size_t) zeros, double[] function(size_t) poles, size_t currentIndex, size_t neededOffset, double initialValue)
@@ -18,7 +18,7 @@ double computeFilter(R)
   else {
     auto result = dotProduct(input[currentIndex - zeros(currentIndex).length + 1 .. currentIndex + 1], zeros(currentIndex));
     
-    if(poles(currentIndex) is null)
+    if(sum(poles(currentIndex)) == 0.)
     {
       result += 0.;
     }
