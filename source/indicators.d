@@ -4,8 +4,8 @@ import std.numeric: dotProduct;
 import std.range: iota;
 import std.algorithm: map, sum;
 
-double computeFilter(R)
-  (R input, double[] function(size_t) zeros, double[] function(size_t) poles, size_t currentIndex, size_t neededOffset, double initialValue)
+pure double computeFilter(R)
+  (R input, double[] function(size_t) pure zeros, double[] function(size_t) pure poles, size_t currentIndex, size_t neededOffset, double initialValue)
 {
   if(currentIndex < neededOffset - 1)
   {
