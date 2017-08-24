@@ -5,7 +5,7 @@ import std.range: iota;
 import std.algorithm: map, sum;
 
 pure double computeFilter(R)
-  (R input, double[] function(size_t) pure zeros, double[] function(size_t) pure poles, size_t currentIndex, size_t neededOffset, double initialValue)
+  (ref R input, double[] function(size_t) pure zeros, double[] function(size_t) pure poles, size_t currentIndex, size_t neededOffset, double initialValue)
 {
   if(currentIndex < neededOffset - 1)
   {
