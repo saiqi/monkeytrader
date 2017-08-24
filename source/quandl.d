@@ -1,6 +1,6 @@
 module quandl;
 
-import std.net.curl: get;
+import std.net.curl: get, CurlException;
 import std.string;
 import std.json;
 import std.algorithm: map;
@@ -13,9 +13,7 @@ string getDataset(string databaseCode, string instrumentCode)
 	string url = format("https://www.quandl.com/api/v3/datasets/%s/%s/data.json?api_key=%s", 
 		 databaseCode, instrumentCode, QUANDL_API_KEY);
 	
-	string response = cast(string)get(url);
-	
-	return response;
+	return cast(string)get(url);
 }
 
 auto convert_null_to_nan(JSONValue value)
@@ -42,7 +40,7 @@ body
 	
 	JSONValue[] data = datasetDoc["data"].array;
 	
-	return map!((a) => convert_null_to_nan(a[type]))(data);
+	return data.map!((a) => convert_null_to_nan(a[type]));
 }
 
 
