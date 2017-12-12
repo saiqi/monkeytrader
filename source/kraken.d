@@ -41,9 +41,9 @@ void getServerTime(ref ServerTime serverTime)
   }
 }
 
-unittest
-{
-  ServerTime serverTime;
-  getServerTime(serverTime);
-  assert(serverTime.unixTime != 0);
-}
+// unittest
+// {
+//   ServerTime serverTime;
+//   getServerTime(serverTime);
+//   assert(serverTime.unixTime != 0);
+// }
