@@ -1,14 +1,16 @@
 import std.algorithm.sorting: sort;
-import std.algorithm.iteration: map;
-import std.range: enumerate;
+import std.algorithm.iteration: map, fold;
+import std.algorithm.searching: any;
+import std.range: enumerate, repeat, take;
 import std.conv: to;
 import std.math: isNaN;
 import std.array: array;
 import std.traits: isFloatingPoint;
+import std.exception: enforce;
 
 class TimeserieException: Exception {
-  this(string s) {
-    super(s);
+  pure this(string s, string file = __FILE__, size_t line = __LINE__) {
+    super(s, file, line);
   }
 }
 
@@ -62,10 +64,10 @@ public:
     }
   }
   
-  pure this(size_t[ulong] _index, immutable(T)[] _serie, bool _hasNaN) {
+  pure this(size_t[ulong] _index, immutable(T)[] _serie) {
     this._index = _index.dup;
     this._serie = _serie.dup;
-    this._hasNaN = _hasNaN;
+    this._hasNaN = any!((a) => isNaN(a))(_serie);
   }
   
   pure this(this) {
@@ -74,9 +76,8 @@ public:
     _hasNaN = _hasNaN;
   }
   
-  T value(ulong epoch) {
-    if(epoch !in _index) throw new TimeserieException("Epoch not in index");
-    
+  pure T value(ulong epoch) {
+    enforce!TimeserieException(epoch in _index, "Index error");
     return _serie[index[epoch]];
   }
   
@@ -94,42 +95,50 @@ public:
   
   Timeserie!T apply(T function(T) fun) {
     auto _newSerie = map!(fun)(_serie);
-    return Timeserie!T(_index, to!(immutable(T)[])(_newSerie.array), _hasNaN);
+    return Timeserie!T(_index, to!(immutable(T)[])(_newSerie.array));
+  }
+  
+  Timeserie!T rolling(T function(T, T) reducer, size_t lag, T function(T) postprocessor) {
+    T[] _newSerie;
+    auto n = lag - 1;
+    _newSerie ~= T.nan.repeat().take(n).array;
+    auto i = n;
+    while(i < _serie.length) {
+      _newSerie ~= postprocessor(fold!(reducer)(_serie[(i-n)..(i+1)]));
+      ++i;
+    }
+    return Timeserie!T(_index, to!(immutable(T)[])(_newSerie.array));
   }
   
   Timeserie opBinary(string op)(Timeserie!T rhs) if (op == "+") {
-    if(_serie.length != rhs._serie.length || _index != rhs._index) throw new TimeserieException("Not compatible timeseries");
-    
+    enforce!TimeserieException(_serie.length == rhs._serie.length && _index == rhs._index, "Heterogeneous series error");
     auto result = new T[_serie.length];
     result[] = _serie[] + rhs._serie[];
-    return Timeserie(_index, to!(immutable(T)[])(result), _hasNaN || rhs._hasNaN);
+    return Timeserie(_index, to!(immutable(T)[])(result));
   }
   
   Timeserie opBinary(string op)(Timeserie!T rhs) if (op == "-") {
-    if(_serie.length != rhs._serie.length || _index != rhs._index) throw new TimeserieException("Not compatible timeseries");
-    
+    enforce!TimeserieException(_serie.length == rhs._serie.length && _index == rhs._index, "Heterogeneous series error");
     auto result = new T[_serie.length];
     result[] = _serie[] - rhs._serie[];
-    return Timeserie(_index, to!(immutable(T)[])(result), _hasNaN || rhs._hasNaN);
+    return Timeserie(_index, to!(immutable(T)[])(result));
   }
   
   Timeserie opBinary(string op)(Timeserie!T rhs) if (op == "*") {
-    if(_serie.length != rhs._serie.length || _index != rhs._index) throw new TimeserieException("Not compatible timeseries");
-    
+    enforce!TimeserieException(_serie.length == rhs._serie.length && _index == rhs._index, "Heterogeneous series error");
     auto result = new T[_serie.length];
     result[] = _serie[] * rhs._serie[];
-    return Timeserie(_index, to!(immutable(T)[])(result), _hasNaN || rhs._hasNaN);
+    return Timeserie(_index, to!(immutable(T)[])(result));
   }
   
   Timeserie opBinary(string op)(Timeserie!T rhs) if (op == "/") {
-    if(_serie.length != rhs._serie.length || _index != rhs._index) throw new TimeserieException("Not compatible timeseries");
+    enforce!TimeserieException(_serie.length == rhs._serie.length && _index == rhs._index, "Heterogeneous series error");
     foreach(v; rhs._serie) {
-      if(v == 0) throw new TimeserieException("Divider has some zeros");
+      enforce!TimeserieException(v != 0, "Division by zero error");
     }
-    
     auto result = new T[_serie.length];
     result[] = _serie[] / rhs._serie[];
-    return Timeserie(_index, to!(immutable(T)[])(result), _hasNaN || rhs._hasNaN);
+    return Timeserie(_index, to!(immutable(T)[])(result));
   }
 }
 
@@ -224,6 +233,7 @@ unittest {
   assert(isNaN((lts * rts).values[3]));
   assert(isNaN((lts / rts).values[1]));
   assert(isNaN((lts / rts).values[3]));
+  assert((lts + rts).hasNaN);
 }
 
 unittest {
@@ -238,6 +248,37 @@ unittest {
   }
 }
 
+unittest {
+  double[ulong] values = [5000: 2., 5001:4., 5002:-1.];
+  auto fun = (double a, double b) => a + b;
+  auto postprocessor = (double a) => a/2;
+  auto ts = Timeserie!double(values, NaNPolicy.nothing);
+  auto newTs = ts.rolling(fun, 2, postprocessor);
+  size_t[ulong] expectedIndex = [5000: 0, 5001: 1, 5002: 2];
+  assert(newTs.index == expectedIndex);
+  assert(newTs.values[1..$] == [3., 1.5]);
+}
+
+unittest {
+  import std.range: iota, zip;
+  import std.array: assocArray;
+  import std.stdio;
+  import std.datetime.systime: Clock;
+  
+  enum size = 1_000_000;
+  writeln(Clock.currStdTime());
+  auto values = 5.5.repeat().take(size);
+  auto index = iota(size);
+  double[ulong] serie = zip(to!(ulong[])(index.array), values).assocArray;
+  writeln(Clock.currTime());
+  auto ts = Timeserie!double(serie, NaNPolicy.nothing);
+  writeln(Clock.currTime());
+  auto reducer = (double a, double b) => a + b;
+  auto postprocessor = (double a) => a/250;
+  auto sma = ts.rolling(reducer, 250, postprocessor);
+  writeln(Clock.currTime());
+}
+
 struct TimeserieBundle(T) if (isFloatingPoint!T) {
 private:
   size_t[ulong] _index;
@@ -246,25 +287,26 @@ private:
 public:
   void add_timeserie(ref Timeserie!T _serie, string name) {
     if(_index.length == 0) _index = _serie.index;
-    
-    if(_index != _serie.index) throw new TimeserieException("Serie\'s index not equals bundle\'s index");
-    
+    enforce!TimeserieException(_index == _serie.index, "Heterogeneous serie error");
     _series[name] = _serie;
+  }
+  
+  void remove_timeserie(string name) {
+    enforce!TimeserieException(name in _series, "Column error");
+    _series.remove(name);
   }
   
   @property @safe pure size_t[ulong] index() {
     return _index;
   }
   
-  Timeserie!T timeserie(string name) {
-    if(name !in _series) throw new TimeserieException("Series not in bundle");
-    
+  pure Timeserie!T timeserie(string name) {
+    enforce!TimeserieException(name in _series, "Column error");
     return _series[name];
   }
   
-  T value(string name, ulong epoch) {
+  pure T value(string name, ulong epoch) {
     auto ts = timeserie(name);
-    
     return ts.value(epoch);
   }
 }
@@ -287,6 +329,13 @@ unittest {
   assert(bundle.value("values", 5000) == 2.);
   try {
     auto wrongValue = bundle.value("values", 5003);
+  } catch (TimeserieException e) {
+    assert(e !is null);
+  }
+  
+  bundle.remove_timeserie("values");
+  try {
+    auto wrongValue = bundle.timeserie("values");
   } catch (TimeserieException e) {
     assert(e !is null);
   }
