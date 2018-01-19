@@ -65,8 +65,8 @@ public:
   }
   
   pure this(size_t[ulong] _index, immutable(T)[] _serie) {
-    this._index = _index.dup;
-    this._serie = _serie.dup;
+    this._index = _index;
+    this._serie = _serie;
     this._hasNaN = any!((a) => isNaN(a))(_serie);
   }
   
@@ -99,15 +99,16 @@ public:
   }
   
   Timeserie!T rolling(T function(T, T) reducer, size_t lag, T function(T) postprocessor) {
-    T[] _newSerie;
+    if(lag > _index.length) throw new TimeserieException("Lag error");
+    T[] _newSerie = new T[_serie.length];
     auto n = lag - 1;
-    _newSerie ~= T.nan.repeat().take(n).array;
+    _newSerie[0..n] = T.nan.repeat().take(n).array;
     auto i = n;
     while(i < _serie.length) {
-      _newSerie ~= postprocessor(fold!(reducer)(_serie[(i-n)..(i+1)]));
+      _newSerie[i] = postprocessor(fold!(reducer)(_serie[(i-n)..(i+1)]));
       ++i;
     }
-    return Timeserie!T(_index, to!(immutable(T)[])(_newSerie.array));
+    return Timeserie!T(_index, to!(immutable(T)[])(_newSerie));
   }
   
   Timeserie opBinary(string op)(Timeserie!T rhs) if (op == "+") {
@@ -257,26 +258,13 @@ unittest {
   size_t[ulong] expectedIndex = [5000: 0, 5001: 1, 5002: 2];
   assert(newTs.index == expectedIndex);
   assert(newTs.values[1..$] == [3., 1.5]);
-}
-
-unittest {
-  import std.range: iota, zip;
-  import std.array: assocArray;
-  import std.stdio;
-  import std.datetime.systime: Clock;
+  assert(isNaN(newTs.values[0]));
   
-  enum size = 1_000_000;
-  writeln(Clock.currStdTime());
-  auto values = 5.5.repeat().take(size);
-  auto index = iota(size);
-  double[ulong] serie = zip(to!(ulong[])(index.array), values).assocArray;
-  writeln(Clock.currTime());
-  auto ts = Timeserie!double(serie, NaNPolicy.nothing);
-  writeln(Clock.currTime());
-  auto reducer = (double a, double b) => a + b;
-  auto postprocessor = (double a) => a/250;
-  auto sma = ts.rolling(reducer, 250, postprocessor);
-  writeln(Clock.currTime());
+  try {
+    auto wrongTs = ts.rolling(fun, 17, postprocessor);
+  } catch(TimeserieException e) {
+    assert(e !is null);
+  }
 }
 
 struct TimeserieBundle(T) if (isFloatingPoint!T) {
