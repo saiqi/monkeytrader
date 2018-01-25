@@ -98,7 +98,7 @@ public:
     return Timeserie!T(_index, to!(immutable(T)[])(_newSerie.array));
   }
   
-  Timeserie!T rolling(T function(T, T) reducer, size_t lag, T function(T) postprocessor) {
+  Timeserie!T rolling(T function(T, T) reducer, inout size_t lag, T function(T) postprocessor) {
     if(lag > _index.length) throw new TimeserieException("Lag error");
     T[] _newSerie = new T[_serie.length];
     auto n = lag - 1;
