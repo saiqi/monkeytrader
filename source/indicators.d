@@ -27,6 +27,8 @@ pure auto ema(Range)(Range input, double alpha) if (isInputRange!Range)
 {
   import std.math: approxEqual;
 
+  assert(1==1);
+
   auto values = [0., 1., 2., 3.];
   auto ema005 = ema(values, 0.05);
 
