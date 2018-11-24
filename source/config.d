@@ -1,1 +1,0 @@
-static immutable(char)[] QUANDL_API_KEY = "YQ4bY-zoeezsYgGwTKjG";
