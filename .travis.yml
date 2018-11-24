@@ -1,0 +1,34 @@
+language: d
+sudo: false
+dist: trusty
+
+branches:
+  only:
+  - master
+
+d:
+  - dmd-2.082.0
+  - dmd-2.081.2
+  - ldc-1.11.0
+  - ldc-1.10.0
+  - ldc-1.9.0
+  - ldc-1.8.0
+  - ldc-1.7.0
+  - ldc-1.6.0
+  - dmd-2.080.1
+  - dmd-2.079.1
+  - dmd-2.078.3
+  - dmd-2.077.1
+  - dmd-2.076.1
+  - dmd-beta
+
+before_install:
+  - wget https://raw.githubusercontent.com/wilzbach/installer-dub/master/script/install.sh -O ~/dlang/install.dub.sh
+  - . $(bash ~/dlang/install.dub.sh -a dub)
+  - dub --version
+
+script:
+  - dub test -b unittest-cov --compiler=${DC}
+
+after_succes:
+  - bash <(curl -s https://codecov.io/bash)
