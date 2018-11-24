@@ -30,5 +30,5 @@ before_install:
 script:
   - dub test -b unittest-cov --compiler=${DC}
 
-after_succes:
+after_success:
   - bash <(curl -s https://codecov.io/bash)
