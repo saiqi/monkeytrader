@@ -6,6 +6,6 @@
 	"homepage": "https://github.com/saiqi/monkeytrader",
 	"description": "Trading platform",
 	"copyright": "Copyright © 2018, saiqi",
-	"license": "GPL-3.0",
+	"license": "MIT",
 	"targetPath": "./bin"
 }
