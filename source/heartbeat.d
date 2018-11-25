@@ -1,19 +1,29 @@
 module heartbeat;
 
 import std.range.primitives: isInputRange;
-import std.datetime: DateTime;
+import std.datetime: DateTime, Date;
 import std.exception: enforce;
 
 ///doc
-struct NaiveCalendar(string freq)
+enum bool isCalendarElement(T) = is(typeof(T.init) == Date)
+    || is(typeof(T.init) == DateTime);
+
+unittest
+{
+    static assert(isCalendarElement!Date);
+}
+
+///doc
+struct NaiveCalendar(T, string freq)
+if (isCalendarElement!T)
 {
 private:
-    DateTime current_;
-    DateTime stop_;
+    T current_;
+    T stop_;
 
 public:
     ///doc
-    this(const DateTime firstDate, const DateTime lastDate)
+    this(const T firstDate, const T lastDate)
     {
         enforce(firstDate < lastDate,
             "firstDate is greater than lastDate");
@@ -41,18 +51,18 @@ public:
     }
 }
 
-static assert(isInputRange!(NaiveCalendar!"months"));
+static assert(isInputRange!(NaiveCalendar!(Date, "months")));
 
 unittest
 {
     import std.exception: assertThrown;
 
-	auto calendar = NaiveCalendar!"months"(DateTime(2017, 12, 31), DateTime(2018, 1, 31));
+	auto calendar = NaiveCalendar!(DateTime, "months")(DateTime(2017, 12, 31), DateTime(2018, 1, 31));
     assert(!calendar.empty, "created calendar not empty");
     assert(calendar.front == "20171231T000000", "first value not equals excepted value");
     calendar.popFront();
     assert(calendar.front == "20180131T000000", "last value not equals excepted value");
     calendar.popFront();
-    assert(calendar.empty, "calendar not empty and all values has been poped");
-    assertThrown(NaiveCalendar!"months"(DateTime(2017, 12, 31), DateTime(2016, 1, 31)));
+    assert(calendar.empty, "calendar not empty and all values has been popped");
+    assertThrown(NaiveCalendar!(DateTime, "months")(DateTime(2017, 12, 31), DateTime(2016, 1, 31)));
 }
