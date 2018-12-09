@@ -5,7 +5,7 @@ import std.datetime: DateTime, Date;
 import core.time: days, hours, minutes, seconds;
 import std.exception: enforce;
 
-///doc
+///
 enum bool isCalendarElement(T) = is(typeof(T.init) == Date)
     || is(typeof(T.init) == DateTime);
 
@@ -14,16 +14,14 @@ unittest
     static assert(isCalendarElement!Date);
 }
 
-///doc
+///
 struct NaiveCalendar(T, string freq)
 if (isCalendarElement!T)
 {
-private:
-    T current_;
-    T stop_;
+    private T current_;
+    private T stop_;
 
-public:
-    ///doc
+    ///
     this(const T firstDate, const T lastDate)
     {
         enforce(firstDate < lastDate,
@@ -33,19 +31,19 @@ public:
         stop_ = lastDate;
     }
 
-    ///doc
+    ///
     @property bool empty() const
     {
         return !(current_ <= stop_);
     }
 
-    ///doc
+    ///
     @property string front() const
     {
         return current_.toISOString();
     }
 
-    ///doc
+    ///
     void popFront()
     {
         static if (freq == "years" || freq == "months") {
