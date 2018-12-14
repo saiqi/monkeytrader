@@ -1,6 +1,6 @@
 module indicator;
 
-import std.range: isInfinite, isBidirectionalRange, isInputRange, ElementType, take;
+import std.range: isInfinite, isInputRange, ElementType, take, drop;
 import std.traits: isNumeric, isFloatingPoint;
 import std.algorithm: sum;
 
@@ -15,7 +15,7 @@ mixin template MissingValue(R)
 }
 
 ///
-auto movingAverage(R)(const R prices, const size_t depth) pure nothrow
+auto movingAverage(R)(R prices, const size_t depth) pure nothrow
 if(isInputRange!R && isNumeric!(ElementType!R))
 {
     static struct MovingAverage(R)
@@ -41,13 +41,11 @@ if(isInputRange!R && isNumeric!(ElementType!R))
 
             if(currentIndex_ == depth_ - 1) return prices_.take(depth_).sum;
 
-            static if (isBidirectionalRange!R) {
-                return lastSumValue_ 
-                    + prices_.take(depth_).front 
-                    - prices_.take(depth_).back;
-            } else {
-                return prices_.take(depth_).sum;
-            }
+            auto sample = prices_.drop(currentIndex_ - depth_).take(depth_ + 1);
+
+            return lastSumValue_ 
+                + sample.back 
+                - sample.front;
             
         }
 
@@ -107,4 +105,27 @@ unittest
     auto prices = iota(50);
     auto sma = movingAverage(prices, 5);
     assert(sma.front == 0, "integer range first value is nan");
+}
+
+unittest
+{
+    import std.range: iota;
+    import std.conv: to;
+    import std.algorithm: map;
+    import std.algorithm.comparison: equal;
+    import std.array: array;
+
+    auto prices = iota(5).map!((a) => to!double(a%2) + to!double(a%3));
+    auto sma = movingAverage(prices, 3).array;
+
+    auto result = [
+        double.nan,
+        double.nan,
+        4./3.,
+        5./3.,
+        4./3.
+    ];
+
+    assert(equal(sma[2 .. $], result[2 .. $]), "computation succeed");
+
 }
