@@ -5,6 +5,16 @@ import std.traits: isNumeric, isFloatingPoint;
 import std.algorithm: sum;
 
 ///
+mixin template MissingValue(R)
+{
+    static if (is(typeof(R.front.nan))) {
+        enum missingValue = () => typeof(R.front).nan;
+    } else {
+        enum missingValue = () => 0;
+    }
+}
+
+///
 auto movingAverage(R)(const R prices, const size_t depth) pure nothrow
 if(isInputRange!R && isNumeric!(ElementType!R))
 {
@@ -15,27 +25,19 @@ if(isInputRange!R && isNumeric!(ElementType!R))
         private size_t depth_;
         private size_t currentIndex_;
 
+        mixin MissingValue!R;
+
         this(R prices, const size_t depth)
         {
             prices_ = prices;
             depth_ = depth;
         }
 
-        static if (is(typeof(R.front.nan))) {
-            @property auto missingValue() {
-                return typeof(prices_.front).nan;
-            }
-        } else {
-            @property auto missingValue() {
-                return typeof(prices_.front).init;
-            }
-        }
-
         @property auto rollingSum()
         {
             assert(!empty);
 
-            if(currentIndex_ < depth_ - 1) return missingValue;
+            if(currentIndex_ < depth_ - 1) return missingValue();
 
             if(currentIndex_ == depth_ - 1) return prices_.take(depth_).sum;
 
@@ -96,7 +98,7 @@ unittest
     import std.math: isNaN;
     auto prices = 4.5.repeat.take(80);
     auto sma = movingAverage(prices, 5);
-    assert(isNaN(sma.front));
+    assert(isNaN(sma.front), "double range first value is nan");
 }
 
 unittest
@@ -104,5 +106,5 @@ unittest
     import std.range: iota;
     auto prices = iota(50);
     auto sma = movingAverage(prices, 5);
-    assert(sma.front == 0);
+    assert(sma.front == 0, "integer range first value is nan");
 }
