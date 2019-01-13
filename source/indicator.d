@@ -22,6 +22,7 @@ if(isInputRange!R && isNumeric!(ElementType!R))
     {
         private R prices_;
         private ElementType!R lastSumValue_;
+        private ElementType!R currentSumValue_;
         private size_t depth_;
         private size_t currentIndex_;
 
@@ -62,18 +63,18 @@ if(isInputRange!R && isNumeric!(ElementType!R))
         {
             assert(!empty);
 
-            lastSumValue_ = rollingSum();
+            lastSumValue_ = currentSumValue_;
             currentIndex_++;
         }
 
         @property auto front()
         {
             assert(!empty);
-            
+            currentSumValue_ = rollingSum();
             static if (isFloatingPoint!(ElementType!R)) {
-                return rollingSum() / depth_;
+                return currentSumValue_ / depth_;
             } else {
-                return rollingSum() / depth_;
+                return currentSumValue_ / depth_;
             }
         }
 
@@ -82,6 +83,7 @@ if(isInputRange!R && isNumeric!(ElementType!R))
             auto copy = MovingAverage!R(prices_, depth_);
             copy.currentIndex_ = currentIndex_;
             copy.lastSumValue_ = lastSumValue_;
+            copy.currentSumValue_ = currentSumValue_;
             return copy;
         }
 
