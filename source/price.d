@@ -9,7 +9,7 @@ import mir.random.variable: NormalVariable;
 enum DataType {OPEN, HIGH, LOW, CLOSE, VOLUME, OPEN_INTEREST}
 
 ///
-auto getGaussianPrices(R, T = double)(R calendar, const T mu, const T sigma, const T initialPrice) pure
+auto getGaussianPrices(R, T = double)(R calendar, in T mu, in T sigma, in T initialPrice) pure
 if(isFloatingPoint!T)
 {
     static struct GaussianPrices(R, T)
@@ -22,7 +22,7 @@ if(isFloatingPoint!T)
         private ElementType!R currentTimestamp_;
         private size_t currentIndex_;
 
-        this(R calendar, const T mu, const T sigma, const T initialPrice) pure
+        this(R calendar, in T mu, in T sigma, in T initialPrice) pure
         {
             calendar_ = calendar;
             mu_ = mu;

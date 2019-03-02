@@ -22,7 +22,7 @@ if(isNumeric!(ElementType!R))
 }
 
 ///
-auto movingAverage(R)(R prices, const size_t depth) pure nothrow
+auto movingAverage(R)(R prices, in size_t depth) pure nothrow
 if(isInputRange!R && isNumeric!(ElementType!R))
 {
     static struct MovingAverage(R)
@@ -35,7 +35,7 @@ if(isInputRange!R && isNumeric!(ElementType!R))
 
         mixin MissingValue!R;
 
-        this(R prices, const size_t depth) pure
+        this(R prices, in size_t depth) pure
         {
             prices_ = prices;
             depth_ = depth;

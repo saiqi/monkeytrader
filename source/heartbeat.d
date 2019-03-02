@@ -22,7 +22,7 @@ if (isCalendarElement!T)
     private T stop_;
 
     ///
-    this(const T firstDate, const T lastDate)
+    this(in T firstDate, in T lastDate) pure @safe
     {
         enforce(firstDate < lastDate,
             "firstDate is greater than lastDate");
