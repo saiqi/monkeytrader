@@ -1,6 +1,6 @@
 module price;
 
-import std.range: ElementType, isInfinite, isInputRange;
+import std.range: ElementType, isInfinite, hasLength, isInputRange;
 import std.traits: isFloatingPoint;
 import mir.random;
 import mir.random.variable: NormalVariable;
@@ -39,10 +39,19 @@ if(isFloatingPoint!T)
 
         @property bool empty() const
         {
-            static if (!isInfinite!R) {
+            static if (hasLength!R) {
                 return calendar_.length == currentIndex_;
-            } else {
+            } else static if (isInfinite!R) {
                 return false;
+            } else {
+                static assert(false, "GaussianPrices range can not be both finite and without length property");
+            }
+        }
+
+        static if (hasLength!R) {
+            @property auto length() const
+            {
+                return calendar_.length; 
             }
         }
 
