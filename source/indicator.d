@@ -1,16 +1,23 @@
 module indicator;
 
-import std.range: isInfinite, isInputRange, ElementType, take, drop;
+import std.range: isInfinite, isInputRange, isBidirectionalRange, hasLength, ElementType, take, drop;
 import std.traits: isNumeric, isFloatingPoint;
 import std.algorithm: sum;
 
 ///
 mixin template MissingValue(R)
+if(isNumeric!(ElementType!R))
 {
-    static if (is(typeof(R.front.nan))) {
-        enum missingValue = () => typeof(R.front).nan;
+    static if (isFloatingPoint!(ElementType!R)) {
+        auto missingValue() pure @nogc @safe nothrow 
+        {
+            return (ElementType!R).nan;
+        }
     } else {
-        enum missingValue = () => 0;
+        auto missingValue() pure @nogc @safe nothrow 
+        {
+            return 0;
+        }
     }
 }
 
@@ -28,34 +35,38 @@ if(isInputRange!R && isNumeric!(ElementType!R))
 
         mixin MissingValue!R;
 
-        this(R prices, const size_t depth)
+        this(R prices, const size_t depth) pure
         {
             prices_ = prices;
             depth_ = depth;
+            currentIndex_ = 0;
+            currentSumValue_ = missingValue();
         }
 
         @property auto rollingSum()
         {
-            assert(!empty);
-
             if(currentIndex_ < depth_ - 1) return missingValue();
 
             if(currentIndex_ == depth_ - 1) return prices_.take(depth_).sum;
 
-            auto sample = prices_.drop(currentIndex_ - depth_).take(depth_ + 1);
-
-            return lastSumValue_ 
-                + sample.back 
-                - sample.front;
-            
+            static if (isBidirectionalRange!R) {
+                auto sample = prices_.drop(currentIndex_ - depth_).take(depth_ + 1);
+                return lastSumValue_ 
+                    + sample.back 
+                    - sample.front;
+            } else {
+                return prices_.take(depth_).sum;
+            }
         }
 
         @property bool empty()
         {
-            static if (!isInfinite!R) {
+            static if (hasLength!R) {
                 return prices_.length == currentIndex_;
-            } else {
+            } else static if (isInfinite!R){
                 return false;
+            } else {
+                static assert(false, "MovingAverage range can not be both finite and without length property");
             }
         }
 
@@ -65,12 +76,12 @@ if(isInputRange!R && isNumeric!(ElementType!R))
 
             lastSumValue_ = currentSumValue_;
             currentIndex_++;
+            currentSumValue_ = rollingSum();
         }
 
         @property auto front()
         {
             assert(!empty);
-            currentSumValue_ = rollingSum();
             static if (isFloatingPoint!(ElementType!R)) {
                 return currentSumValue_ / depth_;
             } else {
@@ -118,6 +129,7 @@ unittest
     import std.array: array;
 
     auto prices = iota(5).map!((a) => to!double(a%2) + to!double(a%3));
+
     auto sma = movingAverage(prices, 3).array;
 
     auto result = [
@@ -130,4 +142,12 @@ unittest
 
     assert(equal(sma[2 .. $], result[2 .. $]), "computation succeed");
 
+}
+
+unittest
+{
+    import std.range: repeat;
+    auto p = 3.4.repeat;
+    auto sma = movingAverage(p, 5);
+    static assert(!isInfinite!(typeof(sma)), "infinite prices give infinite sma");
 }
