@@ -5,35 +5,50 @@ import std.traits: isFloatingPoint;
 import mir.random;
 import mir.random.variable: NormalVariable;
 
-///
+/**
+Type of price
+*/
 enum DataType {OPEN, HIGH, LOW, CLOSE, VOLUME, OPEN_INTEREST}
 
-///
-auto getGaussianPrices(R, T = double)(R calendar, in T mu, in T sigma, in T initialPrice) pure
+/**
+Compute a range of simulated prices where returns follows a gaussian distribution.
+Params:
+    calendar = a range of date, epoch which defines the time window of the simulated range.
+    µ = gaussian distribution location parameter.
+    σ = gaussian distribution scale parameter.
+    initialPrice = the initial value of the simulated range.
+Returns:
+    an Input Range
+Example
+---
+auto p = getGaussianPrices([0, 1, 2], 0., 1., 100.); // three elements range of double, its first value equals 100.
+---
+*/
+auto getGaussianPrices(R, T = double)(R calendar, in T µ, in T σ, in T initialPrice) pure nothrow
 if(isFloatingPoint!T)
 {
     static struct GaussianPrices(R, T)
     {
-        private T mu_;
-        private T sigma_;
+        private T µ_;
+        private T σ_;
         private T initialPrice_;
         private T currentReturn_;
         private R calendar_;
         private ElementType!R currentTimestamp_;
         private size_t currentIndex_;
 
-        this(R calendar, in T mu, in T sigma, in T initialPrice) pure
+        this(R calendar, in T µ, in T σ, in T initialPrice) pure
         {
             calendar_ = calendar;
-            mu_ = mu;
-            sigma_ = sigma;
+            µ_ = µ;
+            σ_ = σ;
             initialPrice_ = initialPrice;
             currentReturn_ = 0.;
         }
 
         private auto nextReturn() const
         {
-            auto d = NormalVariable!double(mu_, sigma_);
+            auto d = NormalVariable!double(µ_, σ_);
             return d(rne);
         }
 
@@ -67,7 +82,7 @@ if(isFloatingPoint!T)
             currentIndex_++;
         }
     }
-    return GaussianPrices!(R, T)(calendar, mu, sigma, initialPrice);
+    return GaussianPrices!(R, T)(calendar, µ, σ, initialPrice);
 }
 
 unittest {

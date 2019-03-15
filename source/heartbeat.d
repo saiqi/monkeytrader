@@ -5,7 +5,20 @@ import std.datetime: DateTime, Date;
 import core.time: days, hours, minutes, seconds;
 import std.exception: enforce;
 
-///
+/**
+Returns `true` if `T` is a Date or a DateTime. 
+Date and DateTime are structs defined in Phobos std.datetime
+Examples:
+---
+isCalendarElement!Date // returns true
+isCalendarElement!DateTime // returns true
+isCalendarElement!int // returns false
+---
+Params:
+    T = type to be tested
+Returns:
+    `true` if T is a Date or a DateTime, `false` if not.
+*/
 enum bool isCalendarElement(T) = is(typeof(T.init) == Date)
     || is(typeof(T.init) == DateTime);
 
@@ -14,14 +27,33 @@ unittest
     static assert(isCalendarElement!Date);
 }
 
-///
+/**
+`NaiveCalendar` is an `InputRange` which iterates over every dates between a start date and a last date.
+Range elements are sampled at a given frequency `freq`.
+Params:
+    T = `Date` or `DateTime` the type of calendar data.
+    freq = a string picked from "days", "months", "years", "minutes" or "seconds"
+Examples:
+---
+auto cal = NaiveCalendar!(Date, "days")(Date(2000, 1, 3), Date(2007, 2, 4));
+cal.front;
+cal.empty;
+cal.popFront();
+---
+*/
 struct NaiveCalendar(T, string freq)
 if (isCalendarElement!T)
 {
     private T current_;
     private T stop_;
 
-    ///
+    /**
+    Throws:
+        An exception if firstDate < lastDate
+    Params:
+        firstDate = the first calendar element 
+        lastDate = the last calendar element
+    */
     this(in T firstDate, in T lastDate) pure @safe
     {
         enforce(firstDate < lastDate,
@@ -85,7 +117,6 @@ alias naiveIntradayCalendar = NaiveCalendar!(DateTime, "minutes");
 unittest
 {
     import std.exception: assertThrown;
-
 	auto calendar = NaiveCalendar!(DateTime, "months")(DateTime(2017, 12, 31), DateTime(2018, 1, 31));
     assert(calendar.length == 2, "length equals 2");
     assert(!calendar.empty, "created calendar not empty");

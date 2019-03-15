@@ -3,8 +3,14 @@ module indicator;
 import std.range: isInfinite, isInputRange, isBidirectionalRange, hasLength, ElementType, take, drop;
 import std.traits: isNumeric, isFloatingPoint;
 import std.algorithm: sum;
+import std.array;
 
-///
+/**
+This implements the missing value management depending on `R` type.
+`R` must be a numeric type.
+`MissingValue` template include a `missingValue` function in its scope 
+which returns `NaN` if `R` is typed as floating point type, `0` else.
+*/
 mixin template MissingValue(R)
 if(isNumeric!(ElementType!R))
 {
@@ -21,7 +27,21 @@ if(isNumeric!(ElementType!R))
     }
 }
 
-///
+/**
+This computes the moving average of a given range.
+As we can't calculate the first n elements their value are those 
+returned by missingValue function in MissingValue template 
+(`NaN` if the elements type is a floating point, `0` otherwise)
+Params:
+    prices = a range which contains numeric elements.
+    depth = the depth of the moving average
+Returns:
+    a ForwardRange
+Example:
+---
+auto sma = MovingAverage([1., 2., 3.], 2); // sma contains [double.nan, 1.5, 2.5]
+---
+*/
 auto movingAverage(R)(R prices, in size_t depth) pure nothrow
 if(isInputRange!R && isNumeric!(ElementType!R))
 {
@@ -103,7 +123,14 @@ if(isInputRange!R && isNumeric!(ElementType!R))
     return MovingAverage!R(prices, depth);
 }
 
-unittest
+@safe unittest
+{
+    auto sma = movingAverage([1., 2., 3., 4., 5.], 2);
+    sma.popFront();
+    assert(sma.front == 1.5);
+}
+
+@safe unittest
 {
     import std.range: repeat;
     import std.math: isNaN;
@@ -112,7 +139,7 @@ unittest
     assert(isNaN(sma.front), "double range first value is nan");
 }
 
-unittest
+@safe unittest
 {
     import std.range: iota;
     auto prices = iota(50);
@@ -120,13 +147,12 @@ unittest
     assert(sma.front == 0, "integer range first value is nan");
 }
 
-unittest
+@safe unittest
 {
     import std.range: iota;
     import std.conv: to;
     import std.algorithm: map;
     import std.algorithm.comparison: equal;
-    import std.array: array;
 
     auto prices = iota(5).map!((a) => to!double(a%2) + to!double(a%3));
 
@@ -144,10 +170,20 @@ unittest
 
 }
 
-unittest
+@safe unittest
 {
     import std.range: repeat;
     auto p = 3.4.repeat;
     auto sma = movingAverage(p, 5);
     static assert(!isInfinite!(typeof(sma)), "infinite prices give infinite sma");
+}
+
+@safe unittest
+{
+    import std.math: isNaN;
+    auto p = [2., 4., double.nan, 10., 12.];
+    auto sma = movingAverage(p, 2);
+    sma.popFront();
+    sma.popFront();
+    assert(isNaN(sma.front));
 }
