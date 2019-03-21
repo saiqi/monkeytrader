@@ -2,7 +2,7 @@ module heartbeat;
 
 import std.range.primitives: isInputRange;
 import std.datetime: DateTime, Date;
-import core.time: days, hours, minutes, seconds;
+import core.time: days, hours, minutes, seconds, MonoTime;
 import std.exception: enforce;
 
 /**
@@ -140,4 +140,34 @@ unittest
     prebuiltIntradayCalendar.popFront();
     assert(prebuiltIntradayCalendar.front == "20171231T000100",
         "a DateTime calendar front method returns YYYYMMDDTHHMMSS string");
+}
+
+
+/**
+
+*/
+struct RealTime
+{
+    ///
+    @property enum empty = false;
+
+    ///
+    void popFront()
+    {
+        now_ = MonoTime.currTime;
+    }
+
+    ///
+    @property auto front() const
+    {
+        return now_;
+    }
+
+    private MonoTime now_;
+}
+
+unittest
+{
+    import std.range: isInfinite;
+    static assert(isInfinite!RealTime);
 }
