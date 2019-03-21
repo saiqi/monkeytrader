@@ -52,16 +52,17 @@ if(isFloatingPoint!T)
             return d(rne);
         }
 
-        @property bool empty() const
-        {
-            static if (hasLength!R) {
+        static if (hasLength!R) {
+            @property bool empty() const
+            {
                 return calendar_.length == currentIndex_;
-            } else static if (isInfinite!R) {
-                return false;
-            } else {
-                static assert(false, "GaussianPrices range can not be both finite and without length property");
             }
+        } else static if (isInfinite!R) {
+            @property enum empty = false;
+        } else {
+            static assert(false, "GaussianPrices range can not be both finite and without length property");
         }
+        
 
         static if (hasLength!R) {
             @property auto length() const
@@ -85,7 +86,8 @@ if(isFloatingPoint!T)
     return GaussianPrices!(R, T)(calendar, µ, σ, initialPrice);
 }
 
-unittest {
+unittest 
+{
     import std.traits: ReturnType;
     import heartbeat: NaiveCalendar;
     import std.datetime: Date;
