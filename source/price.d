@@ -79,6 +79,7 @@ if(isFloatingPoint!T)
 
         void popFront()
         {
+            initialPrice_ = front();
             currentReturn_ = nextReturn();
             currentIndex_++;
         }
