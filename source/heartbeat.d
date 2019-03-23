@@ -1,8 +1,8 @@
 module heartbeat;
 
 import std.range.primitives: isInputRange;
-import std.datetime: DateTime, Date;
-import core.time: days, hours, minutes, seconds, MonoTime;
+import std.datetime: DateTime, Date, SysTime, PosixTimeZone, Clock;
+import core.time: days, hours, minutes, seconds;
 import std.exception: enforce;
 
 /**
@@ -17,7 +17,7 @@ isCalendarElement!int // returns false
 Params:
     T = type to be tested
 Returns:
-    `true` if T is a Date or a DateTime, `false` if not.
+    `true` if T is a Date or a DateTime, `false` otherwise.
 */
 enum bool isCalendarElement(T) = is(typeof(T.init) == Date)
     || is(typeof(T.init) == DateTime);
@@ -44,8 +44,8 @@ cal.popFront();
 struct NaiveCalendar(T, string freq)
 if (isCalendarElement!T)
 {
-    private T current_;
-    private T stop_;
+    private SysTime current_;
+    private SysTime stop_;
 
     /**
     Throws:
@@ -53,14 +53,15 @@ if (isCalendarElement!T)
     Params:
         firstDate = the first calendar element 
         lastDate = the last calendar element
+        timeZoneName = name of the POSIX time zone (default is UTC)
     */
-    this(in T firstDate, in T lastDate) pure @safe
+    this(in T firstDate, in T lastDate, string timeZoneName = "UTC")
     {
         enforce(firstDate < lastDate,
             "firstDate is greater than lastDate");
-
-        current_ = firstDate;
-        stop_ = lastDate;
+        auto timeZone = PosixTimeZone.getTimeZone(timeZoneName);
+        current_ = SysTime(firstDate, timeZone);
+        stop_ = SysTime(lastDate, timeZone);
     }
 
     ///
@@ -70,9 +71,9 @@ if (isCalendarElement!T)
     }
 
     ///
-    @property string front() const
+    @property auto front() const
     {
-        return current_.toISOString();
+        return current_.toUnixTime();
     }
 
     ///
@@ -120,10 +121,10 @@ unittest
 	auto calendar = NaiveCalendar!(DateTime, "months")(DateTime(2017, 12, 31), DateTime(2018, 1, 31));
     assert(calendar.length == 2, "length equals 2");
     assert(!calendar.empty, "created calendar not empty");
-    assert(calendar.front == "20171231T000000", "first value not equals excepted value");
+    assert(calendar.front == 1514678400);
     calendar.popFront();
     assert(calendar.length == 1, "length equals 1");
-    assert(calendar.front == "20180131T000000", "last value not equals excepted value");
+    assert(calendar.front == 1517356800);
     calendar.popFront();
     assert(calendar.empty, "calendar empty and all values has been popped");
     assert(calendar.length == 0, "length equals 0");
@@ -133,13 +134,11 @@ unittest
     assert(!prebuiltDailyCalendar.empty, "calendar not empty");
     assert(prebuiltDailyCalendar.length == 31, "length checked");
     prebuiltDailyCalendar.popFront();
-    assert(prebuiltDailyCalendar.front == "20180101",
-        "a Date type calendar front method returns YYYYMMDD string");
+    assert(prebuiltDailyCalendar.front == 1514764800);
 
     auto prebuiltIntradayCalendar = naiveIntradayCalendar(DateTime(2017, 12, 31), DateTime(2018, 1, 31));
     prebuiltIntradayCalendar.popFront();
-    assert(prebuiltIntradayCalendar.front == "20171231T000100",
-        "a DateTime calendar front method returns YYYYMMDDTHHMMSS string");
+    assert(prebuiltIntradayCalendar.front == 1514678460);
 }
 
 
@@ -152,22 +151,23 @@ struct RealTime
     @property enum empty = false;
 
     ///
-    void popFront()
-    {
-        now_ = MonoTime.currTime;
-    }
+    void popFront() {}
 
     ///
     @property auto front() const
     {
-        return now_;
+        return Clock.currTime.toUnixTime;
     }
-
-    private MonoTime now_;
 }
 
 unittest
 {
     import std.range: isInfinite;
     static assert(isInfinite!RealTime);
+}
+
+unittest
+{
+    auto rt = RealTime();
+    assert(rt.front == Clock.currTime.toUnixTime);
 }

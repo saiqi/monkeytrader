@@ -2,6 +2,7 @@ module price;
 
 import std.range: ElementType, isInfinite, hasLength, isInputRange;
 import std.traits: isFloatingPoint;
+import std.typecons: tuple;
 import mir.random;
 import mir.random.variable: NormalVariable;
 
@@ -18,13 +19,14 @@ Params:
     σ = gaussian distribution scale parameter.
     initialPrice = the initial value of the simulated range.
 Returns:
-    an Input Range
+    an Input Range of tuples which contains the price timestamp, the price type and the price value
 Example
 ---
-auto p = getGaussianPrices([0, 1, 2], 0., 1., 100.); // three elements range of double, its first value equals 100.
+auto p = getGaussianPrices([0, 1, 2], 0., 1., 100.); // three elements range of tuples
 ---
 */
-auto getGaussianPrices(R, T = double)(R calendar, in T µ, in T σ, in T initialPrice) pure nothrow
+auto getGaussianPrices(R, T = double)
+    (R calendar, in T µ, in T σ, in T initialPrice, in DataType type = DataType.CLOSE) pure nothrow
 if(isFloatingPoint!T)
 {
     static struct GaussianPrices(R, T)
@@ -36,14 +38,16 @@ if(isFloatingPoint!T)
         private R calendar_;
         private ElementType!R currentTimestamp_;
         private size_t currentIndex_;
+        private DataType type_;
 
-        this(R calendar, in T µ, in T σ, in T initialPrice) pure
+        this(R calendar, in T µ, in T σ, in T initialPrice, in DataType type) pure
         {
             calendar_ = calendar;
             µ_ = µ;
             σ_ = σ;
             initialPrice_ = initialPrice;
             currentReturn_ = 0.;
+            type_ = type;
         }
 
         private auto nextReturn() const
@@ -74,17 +78,18 @@ if(isFloatingPoint!T)
         @property auto front() const
         {
             assert(!empty);
-            return initialPrice_ * (1 + currentReturn_);
+            return tuple(calendar_.front, type_, initialPrice_*(1+currentReturn_));
         }
 
         void popFront()
         {
-            initialPrice_ = front();
+            initialPrice_ = front[2];
             currentReturn_ = nextReturn();
             currentIndex_++;
+            calendar_.popFront();
         }
     }
-    return GaussianPrices!(R, T)(calendar, µ, σ, initialPrice);
+    return GaussianPrices!(R, T)(calendar, µ, σ, initialPrice, type);
 }
 
 unittest 
@@ -109,7 +114,9 @@ unittest
     auto n = calendar.length;
 
     import std.stdio: writeln;
-    assert(prices.front == 100., "initial price ok");
+    assert(prices.front[0] == 1546300800, "date ok");
+    assert(prices.front[1] == DataType.CLOSE);
+    assert(prices.front[2] == 100., "initial price ok");
     prices.popFront();
 
 }
