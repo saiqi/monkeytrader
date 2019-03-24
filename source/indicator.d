@@ -79,15 +79,15 @@ if(isInputRange!R && isNumeric!(ElementType!R))
             }
         }
 
-        @property bool empty()
-        {
-            static if (hasLength!R) {
+        static if (hasLength!R) {
+            @property bool empty() 
+            {
                 return prices_.length == currentIndex_;
-            } else static if (isInfinite!R){
-                return false;
-            } else {
-                static assert(false, "MovingAverage range can not be both finite and without length property");
             }
+        } else static if (isInfinite!R){
+            @property enum empty = false;
+        } else {
+            static assert(false, "MovingAverage range can not be both finite and without length property");
         }
 
         void popFront()
@@ -175,7 +175,7 @@ if(isInputRange!R && isNumeric!(ElementType!R))
     import std.range: repeat;
     auto p = 3.4.repeat;
     auto sma = movingAverage(p, 5);
-    static assert(!isInfinite!(typeof(sma)), "infinite prices give infinite sma");
+    static assert(isInfinite!(typeof(sma)), "infinite prices give infinite sma");
 }
 
 @safe unittest
