@@ -2,7 +2,7 @@ module price;
 
 import std.range: ElementType, isInfinite, hasLength, isInputRange;
 import std.traits: isFloatingPoint;
-import std.typecons: tuple;
+import std.typecons: Tuple, isTuple;
 import mir.random;
 import mir.random.variable: NormalVariable;
 
@@ -10,6 +10,28 @@ import mir.random.variable: NormalVariable;
 Type of price
 */
 enum DataType {OPEN, HIGH, LOW, CLOSE, VOLUME, OPEN_INTEREST}
+
+
+/**
+Returns `true` if `T` is a price tuple which means `T` has the following named fields: timestamp, value and type. 
+Examples:
+---
+isPrice!(Tuple!(long, "timestamp", DataType, "type", double, "value")) // returns true
+---
+Params:
+    T = type to be tested
+Returns:
+    `true` if T is a price tuple, `false` otherwise.
+*/
+enum bool isPrice(T) = isTuple!T
+&& __traits(hasMember, T, "timestamp")
+&& __traits(hasMember, T, "type")
+&& __traits(hasMember, T, "value");
+
+unittest
+{
+    static assert(isPrice!(Tuple!(long, "timestamp", DataType, "type", double, "value")));
+}
 
 /**
 Compute a range of simulated prices where returns follows a gaussian distribution.
@@ -59,7 +81,7 @@ if(isFloatingPoint!T)
         static if (hasLength!R) {
             @property bool empty() const
             {
-                return calendar_.length == currentIndex_;
+                return currentIndex_ >= calendar_.length;
             }
         } else static if (isInfinite!R) {
             @property enum empty = false;
@@ -78,12 +100,14 @@ if(isFloatingPoint!T)
         @property auto front() const
         {
             assert(!empty);
-            return tuple(calendar_.front, type_, initialPrice_*(1+currentReturn_));
+            return Tuple!(ElementType!R, "timestamp", DataType, "type", T, "value")
+                (calendar_.front, type_, initialPrice_*(1+currentReturn_));
         }
 
         void popFront()
         {
-            initialPrice_ = front[2];
+            assert(!empty);
+            initialPrice_ = front.value;
             currentReturn_ = nextReturn();
             currentIndex_++;
             calendar_.popFront();
@@ -92,7 +116,7 @@ if(isFloatingPoint!T)
     return GaussianPrices!(R, T)(calendar, µ, σ, initialPrice, type);
 }
 
-unittest 
+@safe unittest 
 {
     import std.traits: ReturnType;
     import heartbeat: NaiveCalendar;
@@ -103,20 +127,20 @@ unittest
 }
 
 
-unittest
+@safe unittest
 {
+    import std.range: enumerate;
     import heartbeat: naiveDailyCalendar;
     import std.datetime: Date;
-    import std.range: take;
-
     auto calendar = naiveDailyCalendar(Date(2019, 1, 1), Date(2019, 1, 31));
     auto prices = getGaussianPrices(calendar, 0., 0.05, 100.);
-    auto n = calendar.length;
-
-    import std.stdio: writeln;
-    assert(prices.front[0] == 1546300800, "date ok");
-    assert(prices.front[1] == DataType.CLOSE);
-    assert(prices.front[2] == 100., "initial price ok");
-    prices.popFront();
+    assert(prices.front.timestamp == 1546300800, "date ok");
+    assert(prices.front.type == DataType.CLOSE);
+    assert(prices.front.value == 100., "initial price ok");
+    immutable auto n = prices.length;
+    foreach(i, el; prices.enumerate(1))
+    {
+        assert(i <= n);
+    }
 
 }
