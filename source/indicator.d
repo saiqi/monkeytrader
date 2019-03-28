@@ -57,25 +57,31 @@ returned by missingValue function in MissingValue template
 Please note that the algorithm complexity decreases by order of magnitude 
 when prices are provided through a bidirectional range
 Params:
+    momentType = the type of the moment. 1 = mean, 2 = variance
     prices = a range which contains numeric elements.
     depth = the depth of the moving average
 Returns:
     a ForwardRange
 Example:
 ---
-auto sma = MovingAverage([1., 2., 3.], 2); // sma contains [double.nan, 1.5, 2.5]
+auto sma = movingMoment([1., 2., 3.], 2); // sma contains [double.nan, 1.5, 2.5]
 ---
 */
-auto movingAverage(R)(R prices, in size_t depth) pure nothrow
-if(isInputRange!R && isNumeric!(ElementType!R))
+auto movingMoment(R, uint momentType = 1)(R prices, in size_t depth) pure nothrow
+if(isInputRange!R && isNumeric!(ElementType!R) && (momentType == 1 || momentType == 2))
 {
-    static struct MovingAverage(R)
+    static struct MovingMoment(R, uint momentType)
     {
         private R prices_;
         private ElementType!R lastSumValue_;
         private ElementType!R currentSumValue_;
         private size_t depth_;
         private size_t currentIndex_;
+
+        static if (momentType == 2) {
+            private ElementType!R currentSumSquaredValue_;
+            private ElementType!R lastSumSquaredValue_;
+        }
 
         mixin MissingValue!R;
 
@@ -85,6 +91,9 @@ if(isInputRange!R && isNumeric!(ElementType!R))
             depth_ = depth;
             currentIndex_ = 0;
             currentSumValue_ = missingValue();
+            static if (momentType == 2) {
+                currentSumSquaredValue_ = missingValue();
+            }
         }
 
         @property auto rollingSum()
@@ -103,6 +112,24 @@ if(isInputRange!R && isNumeric!(ElementType!R))
             }
         }
 
+        static if (momentType == 2) {
+            @property auto rollingSumSquared()
+            {
+                if(currentIndex_ < depth_ - 1) return missingValue();
+
+                if(currentIndex_ == depth_ - 1) return prices_.take(depth_).map!"a*a".sum;
+
+                static if (isBidirectionalRange!R) {
+                    auto sample = prices_.drop(currentIndex_ - depth_).take(depth_ + 1);
+                    return lastSumSquaredValue_
+                        + sample.back*sample.back 
+                        - sample.front*sample.front;
+                } else {
+                    return prices_.take(depth_).map!"a*a".sum;
+                }
+            }
+        }
+
         static if (hasLength!R) {
             @property bool empty() 
             {
@@ -111,7 +138,7 @@ if(isInputRange!R && isNumeric!(ElementType!R))
         } else static if (isInfinite!R){
             @property enum empty = false;
         } else {
-            static assert(false, "MovingAverage range can not be both finite and without length property");
+            static assert(false, "MovingMoment range can not be both finite and without length property");
         }
 
         void popFront()
@@ -119,46 +146,64 @@ if(isInputRange!R && isNumeric!(ElementType!R))
             assert(!empty);
 
             lastSumValue_ = currentSumValue_;
+            static if(momentType == 2)
+                lastSumSquaredValue_ = currentSumSquaredValue_;
             currentIndex_++;
             currentSumValue_ = rollingSum();
+            static if(momentType == 2)
+                currentSumSquaredValue_ = rollingSumSquared();
         }
 
         @property auto front()
         {
             assert(!empty);
-            static if (isFloatingPoint!(ElementType!R)) {
+            static if (momentType == 1) {
                 return currentSumValue_ / depth_;
             } else {
-                return currentSumValue_ / depth_;
+                return (currentSumSquaredValue_ - currentSumValue_*currentSumValue_/depth_) / (depth_ - 1.); 
             }
         }
 
         auto save()
         {
-            auto copy = MovingAverage!R(prices_, depth_);
+            auto copy = MovingMoment!(R, momentType)(prices_, depth_);
             copy.currentIndex_ = currentIndex_;
             copy.lastSumValue_ = lastSumValue_;
             copy.currentSumValue_ = currentSumValue_;
+            static if(momentType == 2) {
+                copy.lastSumSquaredValue_ = lastSumSquaredValue_;
+                copy.currentSumSquaredValue_ = lastSumSquaredValue_;
+            }
             return copy;
         }
 
     }
 
-    return MovingAverage!R(prices, depth);
+    return MovingMoment!(R, momentType)(prices, depth);
 }
 
 @safe unittest
 {
-    auto sma = movingAverage([1., 2., 3., 4., 5.], 2);
+    auto values = [1., 2., 3., 4., 5.];
+    auto sma = movingMoment!(double[], 1)(values, 2);
     sma.popFront();
     assert(sma.front == 1.5);
 }
 
 @safe unittest
 {
+    import std.range: iota;
+    import std.algorithm: equal;
+    auto values = iota(10).array;
+    auto smv = movingMoment!(int[], 2)(values, 5);
+    assert(equal(smv, [0, 0, 0, 0, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5]));
+}
+
+@safe unittest
+{
     import std.range: repeat;
     auto prices = 4.5.repeat.take(80);
-    auto sma = movingAverage(prices, 5);
+    auto sma = movingMoment(prices, 5);
     assert(isNaN(sma.front), "double range first value is nan");
 }
 
@@ -166,7 +211,7 @@ if(isInputRange!R && isNumeric!(ElementType!R))
 {
     import std.range: iota;
     auto prices = iota(50);
-    auto sma = movingAverage(prices, 5);
+    auto sma = movingMoment(prices, 5);
     assert(sma.front == 0, "integer range first value is nan");
 }
 
@@ -179,7 +224,7 @@ if(isInputRange!R && isNumeric!(ElementType!R))
 
     auto prices = iota(5).map!((a) => to!double(a%2) + to!double(a%3));
 
-    auto sma = movingAverage(prices, 3).array;
+    auto sma = movingMoment(prices, 3).array;
 
     auto result = [
         double.nan,
@@ -197,14 +242,14 @@ if(isInputRange!R && isNumeric!(ElementType!R))
 {
     import std.range: repeat;
     auto p = 3.4.repeat;
-    auto sma = movingAverage(p, 5);
+    auto sma = movingMoment(p, 5);
     static assert(isInfinite!(typeof(sma)), "infinite prices give infinite sma");
 }
 
 @safe unittest
 {
     auto p = [2., 4., double.nan, 10., 12.];
-    auto sma = movingAverage(p, 2);
+    auto sma = movingMoment(p, 2);
     sma.popFront();
     sma.popFront();
     assert(isNaN(sma.front));
@@ -329,7 +374,7 @@ if(isInputRange!R
                 "SMA_ONE_LINE_POSITION depends on one parameter");
             auto depth = to!int(parameters[0]);
             auto values = prices.map!"a.value";
-            auto signals = singleLinePosition(prices, values.movingAverage(depth));
+            auto signals = singleLinePosition(prices, values.movingMoment(depth));
             return Signals!(typeof(signals))(signals);
     }
 }
