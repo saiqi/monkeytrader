@@ -142,5 +142,4 @@ if(isFloatingPoint!T)
     {
         assert(i <= n);
     }
-
 }

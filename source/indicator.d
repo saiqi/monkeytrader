@@ -28,6 +28,11 @@ Type of signal
 enum SignalType {BUY, SELL, ROLL, NONE}
 
 /**
+Account percentage to normalise 
+*/
+enum RISK_UNITS_K = 0.01;
+
+/**
 This implements the missing value management depending on `R` type.
 `R` must be a numeric type.
 `MissingValue` template include a `missingValue` function in its scope 
@@ -108,7 +113,7 @@ if(isInputRange!R && isNumeric!(ElementType!R) && (momentType == 1 || momentType
                     + sample.back 
                     - sample.front;
             } else {
-                return prices_.take(depth_).sum;
+                return prices_.drop(currentIndex_ - depth_ + 1).take(depth_).sum;
             }
         }
 
@@ -125,7 +130,7 @@ if(isInputRange!R && isNumeric!(ElementType!R) && (momentType == 1 || momentType
                         + sample.back*sample.back 
                         - sample.front*sample.front;
                 } else {
-                    return prices_.take(depth_).map!"a*a".sum;
+                    return prices_.drop(currentIndex_ - depth_ + 1).take(depth_).map!"a*a".sum;
                 }
             }
         }
@@ -180,6 +185,17 @@ if(isInputRange!R && isNumeric!(ElementType!R) && (momentType == 1 || momentType
     }
 
     return MovingMoment!(R, momentType)(prices, depth);
+}
+
+alias movingAverage(R) = movingMoment!(R, 1);
+alias movingVariance(R) = movingMoment!(R, 2);
+
+@safe unittest
+{
+    auto v = [3.0, 3.0, 3.0, 3.0];
+    auto sma = movingAverage!(double[])(v, 2);
+    sma.popFront();
+    assert(sma.front == 3.0);
 }
 
 @safe unittest
@@ -255,6 +271,42 @@ if(isInputRange!R && isNumeric!(ElementType!R) && (momentType == 1 || momentType
     assert(isNaN(sma.front));
 }
 
+@safe unittest {
+    struct DummyRange {
+
+        @property double front()
+        {
+            return last;
+        }
+
+        enum empty = false;
+        
+        void popFront()
+        {
+            last += 1.0;
+        }
+
+        private double last = 0;
+    }
+    
+    import std.range: enumerate;
+    auto r = DummyRange();
+    const size_t depth = 7;
+    auto sma = movingAverage!DummyRange(r, depth);
+
+    double avg = 0.;
+    foreach(i, el; sma.take(depth + 5).enumerate)
+    {
+        if(i == depth - 1)
+        {
+            avg = .5*i*(i+1) / depth;
+        } else if (i > depth - 1) {
+            avg++;
+        }
+        assert(!isNaN(el) ? avg == el : isNaN(el));
+    }
+}
+
 mixin template SignalHandler(R)
 {
     @property auto front()
@@ -275,7 +327,7 @@ mixin template SignalHandler(R)
         static assert(false, "SignalHandler range can not be both finite and without length property");
     }
 
-    static if (hasLength!R1) {
+    static if (hasLength!R) {
         @property auto length()
         {
             return prices_.length;
@@ -430,4 +482,136 @@ if(isInputRange!R
     }
 }
 
+auto getReturns(R)(R prices) pure nothrow
+if(isInputRange!R 
+&& isNumeric!(ElementType!R))
+{
+    static struct Returns(R)
+    {
+        mixin MissingValue!R;
 
+        this(R prices)
+        {
+            prices_ = prices;
+        }
+
+        @property auto front()
+        {
+            assert(!empty);
+            if (currentIndex_ == 0) return missingValue();
+            return currentValue_;        
+        }
+
+        static if (hasLength!R) {
+            @property bool empty()
+            {
+                return currentIndex_ >= prices_.length;
+            }
+        } else static if (isInfinite!R) {
+            @property enum empty = false;
+        } else {
+            static assert(false, "Returns range can not be both finite and without length property");
+        }
+
+        static if (hasLength!R) {
+            @property auto length()
+            {
+                return prices_.length;
+            }
+        }
+
+        void popFront()
+        {
+            assert(!empty);
+            const auto sample = prices_.drop(currentIndex_).take(2);
+            currentValue_ = sample.back / sample.front - 1;
+            currentIndex_++;
+        }
+
+        private R prices_;
+        private ElementType!R currentValue_;
+        private size_t currentIndex_;
+    }
+    return Returns!R(prices);
+}
+
+@safe unittest
+{
+    import std.math: approxEqual;
+    auto r = getReturns([100.0, 110.0, 114.9, 105.6, 99.8]);
+    assert(isNaN(r.front), "first is nan");
+    r.popFront();
+    assert(approxEqual(r.front, .1), "second");
+}
+
+@safe unittest
+{
+    import std.range: enumerate;
+    import std.math: approxEqual;
+    auto r = getReturns([1., 2., 3., 4., 5.]);
+
+    foreach(i, el; r.enumerate)
+    {
+        if(i == 0) {
+            assert(isNaN(el));
+        } else {
+            const auto v = cast(double)i;
+            assert(approxEqual(el, (v+1)/v-1));
+        }
+    }
+}
+
+
+/**
+
+*/
+// auto getNominalToTrade(R)(in R signals, in size_t volatilityDepth = 252) pure
+// if (
+//     isTuple!(ElementType!R)
+//     && __traits(hasMember, ElementType!R, "timestamp")
+//     && __traits(hasMember, ElementType!R, "price")
+//     && __traits(hasMember, ElementType!R, "signal")
+// )
+// {
+//     static struct NominalToTrade(R)
+//     {
+//         this(in R signals, in size_t volatilityDepth)
+//         {
+//             signals_ = signals;
+//             currentNominal_ = 0.;
+//         }
+
+//         @property auto front()
+//         {
+//             assert(!empty);
+//             return currentNominal_;
+//         }
+
+//         static if (hasLength!R) {
+//             @property bool empty()
+//             {
+//                 return currentIndex_ >= signals_.length;
+//             }
+//         } else static if (isInfinite!R) {
+//             @property enum empty = false;
+//         } else {
+//             static assert(false, "NominalToTrade range can not be both finite and without length property");
+//         }
+
+//         void popFront()
+//         {
+//             auto returns = prices
+//                 .map!"a.price"
+//                 .recurrence!"a[n]/a[n-1] - 1";
+//             currentNominal_ = RISK_UNITS_K / 
+//             currentIndex_++;
+//         }
+        
+
+//         private double currentNominal_;
+//         private size_t currentIndex_;
+//         private size_t volatilityDepth;
+//         private R signals_;
+//     }
+//     return NominalToTrade(signals);
+// }
