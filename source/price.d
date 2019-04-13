@@ -59,7 +59,6 @@ if(isFloatingPoint!T)
         private T currentReturn_;
         private R calendar_;
         private ElementType!R currentTimestamp_;
-        private size_t currentIndex_;
         private DataType type_;
 
         this(R calendar, in T µ, in T σ, in T initialPrice, in DataType type) pure
@@ -78,17 +77,10 @@ if(isFloatingPoint!T)
             return d(rne);
         }
 
-        static if (hasLength!R) {
-            @property bool empty() const
-            {
-                return currentIndex_ >= calendar_.length;
-            }
-        } else static if (isInfinite!R) {
-            @property enum empty = false;
-        } else {
-            static assert(false, "GaussianPrices range can not be both finite and without length property");
+        @property bool empty() const
+        {
+            return calendar_.empty;
         }
-        
 
         static if (hasLength!R) {
             @property auto length() const
@@ -100,8 +92,8 @@ if(isFloatingPoint!T)
         @property auto front() const
         {
             assert(!empty);
-            return Tuple!(ElementType!R, "timestamp", DataType, "type", T, "value")
-                (calendar_.front, type_, initialPrice_*(1+currentReturn_));
+            return Tuple!(ElementType!R, "timestamp", DataType, "type", T, "value", T, "yield")
+                (calendar_.front, type_, initialPrice_*(1+currentReturn_), currentReturn_);
         }
 
         void popFront()
@@ -109,7 +101,6 @@ if(isFloatingPoint!T)
             assert(!empty);
             initialPrice_ = front.value;
             currentReturn_ = nextReturn();
-            currentIndex_++;
             calendar_.popFront();
         }
     }
@@ -126,20 +117,44 @@ if(isFloatingPoint!T)
     static assert(isInputRange!R);
 }
 
+@safe unittest
+{
+    import std.array;
+    import heartbeat: naiveDailyCalendar;
+    import std.datetime: Date;
+    import std.algorithm: map;
+
+    auto prices = naiveDailyCalendar(Date(2019, 1, 1), Date(2019, 1, 3))
+        .getGaussianPrices(0., 0.003, 100.)
+        .array
+        .map!"a.value";
+    assert(prices[0] == 100.);
+}
+
 
 @safe unittest
 {
     import std.range: enumerate;
     import heartbeat: naiveDailyCalendar;
     import std.datetime: Date;
-    auto calendar = naiveDailyCalendar(Date(2019, 1, 1), Date(2019, 1, 31));
+    auto calendar = naiveDailyCalendar(Date(2019, 1, 1), Date(2019, 1, 3));
     auto prices = getGaussianPrices(calendar, 0., 0.05, 100.);
     assert(prices.front.timestamp == 1546300800, "date ok");
     assert(prices.front.type == DataType.CLOSE);
     assert(prices.front.value == 100., "initial price ok");
-    immutable auto n = prices.length;
     foreach(i, el; prices.enumerate(1))
     {
-        assert(i <= n);
+        assert(el.type == DataType.CLOSE);
     }
+}
+
+@safe unittest
+{
+    import heartbeat: naiveDailyCalendar;
+    import std.datetime: Date;
+    import std.algorithm: map;
+    import std.array: array;
+    auto calendar = naiveDailyCalendar(Date(2019, 3, 23), Date(2019, 3, 26), "Europe/London");
+    auto prices = calendar.getGaussianPrices(0., 0.001, 100.);
+    assert(prices.length == calendar.length);
 }

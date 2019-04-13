@@ -90,6 +90,9 @@ if(isInputRange!R && isNumeric!(ElementType!R) && (momentType == 1 || momentType
 
         mixin MissingValue!R;
 
+        static if(!isBidirectionalRange!R) pragma(msg, 
+            "WARNING !! calculation complexity should be high on non BidirectionalRange");
+
         this(R prices, in size_t depth) pure
         {
             prices_ = prices;
@@ -316,15 +319,9 @@ mixin template SignalHandler(R)
             (currentPrice.timestamp, currentPrice.value, currentSignal_);
     }
 
-    static if (hasLength!R) {
-        @property bool empty()
-        {
-            return currentIndex_ >= prices_.length;
-        }
-    } else static if (isInfinite!R) {
-        @property enum empty = false;
-    } else {
-        static assert(false, "SignalHandler range can not be both finite and without length property");
+    @property bool empty()
+    {
+        return prices_.empty;
     }
 
     static if (hasLength!R) {
@@ -349,17 +346,15 @@ mixin template SignalHandler(R)
         lastRegime_ = currentRegime_;
         currentRegime_ = computeRegime();
         currentSignal_ = computeSignal();
-        currentIndex_++;
         prices_.popFront();
         indicator_.popFront();
     }
 }
 
-
 /**
 
 */
-auto singleLinePosition(R1, R2)(in R1 prices, in R2 indicator) pure nothrow
+auto singleLinePosition(R1, R2)(inout(R1) prices, R2 indicator) pure nothrow
 if(isInputRange!R1 
     && isInputRange!R2 
     && isNumeric!(ElementType!R2) 
@@ -369,9 +364,9 @@ if(isInputRange!R1
     {
         mixin SignalHandler!R1;
 
-        this(in R1 prices, in R2 indicator)
+        this(inout(R1) prices, R2 indicator)
         {
-            prices_ = prices;
+            prices_ = cast(R1) prices;
             indicator_ = indicator;
             currentRegime_ = Regime.FLAT;
             lastRegime_ = Regime.FLAT;
@@ -394,7 +389,6 @@ if(isInputRange!R1
         private R1 prices_;
         private R2 indicator_;
         private SignalType currentSignal_;
-        private size_t currentIndex_;
     }
     return SingleLinePosition!(R1, R2)(prices, indicator);
 }
@@ -415,7 +409,7 @@ if(isInputRange!R1
     assert(system.front.signal == SignalType.NONE);
 }
 
-auto getSignals(R, T)(in R prices, in TradingSystem system, in T parameters) pure
+auto getSignals(R, T)(R prices, in TradingSystem system, in T parameters) pure
 if(isInputRange!R 
 && isTuple!T
 && isPrice!(ElementType!R))
@@ -440,9 +434,9 @@ if(isInputRange!R
 {
     R signals_;
 
-    this(in R signals)
+    this(inout(R) signals)
     {
-        signals_ = signals;
+        signals_ = cast(R)signals;
     }
 
     @property auto front()
@@ -482,6 +476,19 @@ if(isInputRange!R
     }
 }
 
+@safe unittest
+{
+    import heartbeat: naiveDailyCalendar;
+    import price: getGaussianPrices;
+    import std.datetime: Date;
+    import std.algorithm: map;
+    auto system = naiveDailyCalendar(Date(2019, 4, 1), Date(2019, 4, 7), "Europe/London")
+        .getGaussianPrices(0., 0.0025, 100.)
+        .getSignals(TradingSystem.SMA_ONE_LINE_POSITION, tuple(22))
+        .map!"a.signal";
+    assert(system.length == 7);
+}
+
 auto getReturns(R)(R prices) pure nothrow
 if(isInputRange!R 
 && isNumeric!(ElementType!R))
@@ -502,15 +509,9 @@ if(isInputRange!R
             return currentValue_;        
         }
 
-        static if (hasLength!R) {
-            @property bool empty()
-            {
-                return currentIndex_ >= prices_.length;
-            }
-        } else static if (isInfinite!R) {
-            @property enum empty = false;
-        } else {
-            static assert(false, "Returns range can not be both finite and without length property");
+        @property bool empty()
+        {
+            return prices_.empty;
         }
 
         static if (hasLength!R) {
@@ -523,13 +524,19 @@ if(isInputRange!R
         void popFront()
         {
             assert(!empty);
-            const auto sample = prices_.drop(currentIndex_).take(2);
-            currentValue_ = sample.back / sample.front - 1;
+            static if (isBidirectionalRange!R) {
+                auto sample = prices_.take(2);
+            } else {
+                auto sample = prices_.take(2).array;
+            }
+            
+            currentValue_ = to!double(sample.back) / to!double(sample.front) - 1;
+            prices_.popFront();
             currentIndex_++;
         }
 
         private R prices_;
-        private ElementType!R currentValue_;
+        private double currentValue_;
         private size_t currentIndex_;
     }
     return Returns!R(prices);
@@ -561,6 +568,28 @@ if(isInputRange!R
     }
 }
 
+@safe unittest
+{
+    struct DummyRange
+    {
+        @property auto front()
+        {
+            return value_;
+        }
+
+        enum bool empty = false;
+
+        void popFront()
+        {
+            value_++;
+        }
+
+        private double value_ = 0.;
+    }
+
+    auto r = getReturns(DummyRange());
+    r.popFront();
+}
 
 /**
 

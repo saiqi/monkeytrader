@@ -80,13 +80,12 @@ if (isCalendarElement!T)
     @property size_t length() const
     {
         if(empty) return 0;
-
         static if (freq == "months") {
             return 12*(stop_.year - current_.year) + stop_.month - current_.month + 1;
         } else static if (freq == "years") {
             return stop_.year - current_.year + 1;
         } else {
-            return (stop_ - current_).total!freq;
+            return (stop_ - current_).total!freq + 1;
         }
     }
 
@@ -115,7 +114,7 @@ alias naiveDailyCalendar = NaiveCalendar!(Date, "days");
 alias naiveMonthlyCalendar = NaiveCalendar!(Date, "months");
 alias naiveIntradayCalendar = NaiveCalendar!(DateTime, "minutes");
 
-unittest
+@safe unittest
 {
     import std.exception: assertThrown;
 	auto calendar = NaiveCalendar!(DateTime, "months")(DateTime(2017, 12, 31), DateTime(2018, 1, 31));
@@ -123,16 +122,16 @@ unittest
     assert(!calendar.empty, "created calendar not empty");
     assert(calendar.front == 1514678400);
     calendar.popFront();
-    assert(calendar.length == 1, "length equals 1");
+    assert(calendar.length == 1);
     assert(calendar.front == 1517356800);
     calendar.popFront();
     assert(calendar.empty, "calendar empty and all values has been popped");
-    assert(calendar.length == 0, "length equals 0");
+    assert(calendar.length == 0);
     assertThrown(NaiveCalendar!(DateTime, "months")(DateTime(2017, 12, 31), DateTime(2016, 1, 31)));
 
     auto prebuiltDailyCalendar = naiveDailyCalendar(Date(2017, 12, 31), Date(2018, 1, 31));
     assert(!prebuiltDailyCalendar.empty, "calendar not empty");
-    assert(prebuiltDailyCalendar.length == 31, "length checked");
+    assert(prebuiltDailyCalendar.length == 32, "length checked");
     prebuiltDailyCalendar.popFront();
     assert(prebuiltDailyCalendar.front == 1514764800);
 
@@ -141,6 +140,12 @@ unittest
     assert(prebuiltIntradayCalendar.front == 1514678460);
 }
 
+
+@safe unittest
+{
+    auto calendar = naiveDailyCalendar(Date(2019, 3, 23), Date(2019, 3, 25), "Europe/London");
+    assert(calendar.length == 3);
+}
 
 /**
 
