@@ -1,13 +1,13 @@
 module indicator;
 
 import std.range: isInfinite, isInputRange, isBidirectionalRange, hasLength, ElementType, take, drop;
-import std.traits: isNumeric, isFloatingPoint;
+import std.traits: isNumeric, isFloatingPoint, ReturnType;
 import std.algorithm: sum, map;
 import std.array;
 import std.typecons: tuple, isTuple;
 import std.exception: enforce;
 import std.conv: to;
-import std.math: isNaN;
+import std.math: isNaN, sqrt;
 import price: isPrice;
 
 /**
@@ -30,7 +30,7 @@ enum SignalType {BUY, SELL, ROLL, NONE}
 /**
 Account percentage to normalise 
 */
-enum RISK_UNITS_K = 0.01;
+enum RISK_UNITS_K = 0.0001;
 
 /**
 This implements the missing value management depending on `R` type.
@@ -274,7 +274,8 @@ alias movingVariance(R) = movingMoment!(R, 2);
     assert(isNaN(sma.front));
 }
 
-@safe unittest {
+@safe unittest 
+{
     struct DummyRange {
 
         @property double front()
@@ -310,13 +311,27 @@ alias movingVariance(R) = movingMoment!(R, 2);
     }
 }
 
+@safe unittest 
+{
+    import std.range: repeat;
+    auto el = tuple(0, 45.0);
+    auto prices = el.repeat(50).map!"a[1]";
+    auto v = prices.movingAverage!(typeof(prices))(20);
+    assert(isInputRange!(typeof(v)));
+    v.popFront();
+}
+
 mixin template SignalHandler(R)
 {
     @property auto front()
     {
         auto currentPrice = prices_.front;
-        return tuple!("timestamp", "price", "signal")
-            (currentPrice.timestamp, currentPrice.value, currentSignal_);
+        static if(__traits(hasMember, ElementType!R, "yield"))
+            return tuple!("timestamp", "price", "yield", "signal")
+                (currentPrice.timestamp, currentPrice.value, currentPrice.yield, currentSignal_);
+        else
+            return tuple!("timestamp", "price", "signal")
+                (currentPrice.timestamp, currentPrice.value, currentSignal_);
     }
 
     @property bool empty()
@@ -594,53 +609,117 @@ if(isInputRange!R
 /**
 
 */
-// auto getNominalToTrade(R)(in R signals, in size_t volatilityDepth = 252) pure
-// if (
-//     isTuple!(ElementType!R)
-//     && __traits(hasMember, ElementType!R, "timestamp")
-//     && __traits(hasMember, ElementType!R, "price")
-//     && __traits(hasMember, ElementType!R, "signal")
-// )
-// {
-//     static struct NominalToTrade(R)
-//     {
-//         this(in R signals, in size_t volatilityDepth)
-//         {
-//             signals_ = signals;
-//             currentNominal_ = 0.;
-//         }
+auto getNominalToTrade(R1)(R1 signals, in size_t volatilityDepth = 252) pure
+if (
+    isInputRange!R1
+    && isTuple!(ElementType!R1)
+    && __traits(hasMember, ElementType!R1, "timestamp")
+    && __traits(hasMember, ElementType!R1, "yield")
+    && __traits(hasMember, ElementType!R1, "signal")
+)
+{
+    static struct NominalToTrade(R1, R2)
+    {
+        this(R1 signals, R2 rollingVariance)
+        {
+            signals_ = signals;
+            currentNominal_ = 0.;
+            lastNominal_ = 0.;
+            rollingVariance_ = rollingVariance;
+        }
 
-//         @property auto front()
-//         {
-//             assert(!empty);
-//             return currentNominal_;
-//         }
+        @property auto front()
+        {
+            assert(!empty);
+            return currentNominal_;
+        }
 
-//         static if (hasLength!R) {
-//             @property bool empty()
-//             {
-//                 return currentIndex_ >= signals_.length;
-//             }
-//         } else static if (isInfinite!R) {
-//             @property enum empty = false;
-//         } else {
-//             static assert(false, "NominalToTrade range can not be both finite and without length property");
-//         }
+        @property bool empty()
+        {
+            return signals_.empty;
+        }
 
-//         void popFront()
-//         {
-//             auto returns = prices
-//                 .map!"a.price"
-//                 .recurrence!"a[n]/a[n-1] - 1";
-//             currentNominal_ = RISK_UNITS_K / 
-//             currentIndex_++;
-//         }
+        static if (hasLength!R1)
+        {
+            @property size_t length()
+            {
+                return signals_.length;
+            }
+        }
+
+        private auto computeCurrentNominal() 
+        {
+            final switch(signals_.front.signal) {
+                case SignalType.SELL:
+                    return -RISK_UNITS_K / sqrt(rollingVariance_.front);
+                case SignalType.BUY:
+                    return RISK_UNITS_K / sqrt(rollingVariance_.front);
+                case SignalType.ROLL:
+                    return lastNominal_;
+                case SignalType.NONE:
+                    return 0.;
+            }
+        }
+
+        void popFront()
+        {
+            assert(!empty);
+            currentNominal_ = isNaN(computeCurrentNominal()) ? 0. : computeCurrentNominal();
+            lastNominal_ = currentNominal_ == 0. ? lastNominal_ : currentNominal_;
+            rollingVariance_.popFront();
+            signals_.popFront();
+        }
         
+        private double currentNominal_;
+        private double lastNominal_;
+        private R1 signals_;
+        private R2 rollingVariance_;
+    }
+    auto returns = signals.map!"a.yield";
+    auto rollingVariance = returns.movingVariance!(typeof(returns))(volatilityDepth);
+    return NominalToTrade!(R1, typeof(rollingVariance))(signals, rollingVariance);
+}
 
-//         private double currentNominal_;
-//         private size_t currentIndex_;
-//         private size_t volatilityDepth;
-//         private R signals_;
-//     }
-//     return NominalToTrade(signals);
-// }
+@safe unittest
+{
+    import std.range: repeat, enumerate;
+    auto v = tuple!("timestamp", "price", "yield", "signal")(0, 100., -0.1, SignalType.SELL);
+    auto n = v.repeat(40).getNominalToTrade(21);
+    foreach(i, el; n.enumerate)
+    {
+        if (i < 21) assert(el == 0.);
+        else assert(el < 0.);
+    }
+}
+
+@safe unittest
+{
+    import heartbeat: naiveDailyCalendar;
+    import price: getGaussianPrices;
+    import std.datetime: Date;
+    auto strategy = naiveDailyCalendar(Date(2019, 4, 1), Date(2019, 4, 30), "Europe/London")
+        .getGaussianPrices(0., 0.0025, 100.)
+        .getSignals(TradingSystem.SMA_ONE_LINE_POSITION, tuple(5));
+    alias R1 = typeof(strategy);
+    static assert (
+        isInputRange!R1
+        && isTuple!(ElementType!R1)
+        && __traits(hasMember, ElementType!R1, "timestamp")
+        && __traits(hasMember, ElementType!R1, "yield")
+        && __traits(hasMember, ElementType!R1, "signal")
+    );
+    auto nominal = strategy.getNominalToTrade(10);
+    nominal.popFront();
+}
+
+@safe unittest
+{
+    import std.range: repeat, enumerate;
+    auto v = tuple!("timestamp", "price", "yield", "signal")(0, 100., -0.1, SignalType.SELL);
+    auto n = v.repeat(40).array.getNominalToTrade(21);
+    foreach(i, el; n.enumerate)
+    {
+        if (i < 21) assert(el == 0.);
+        else assert(el < 0.);
+    }
+}
